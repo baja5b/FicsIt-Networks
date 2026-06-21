@@ -1,25 +1,193 @@
-// FIN-1.2-PORT: KOMPLETT DEAKTIVIERT (temporär).
-//
-// Das Self-Driving-Vehicle-System wurde in Satisfactory 1.2 ersetzt:
-//   WEG:  UFGSplinePathMovementComponent, AFGWheeledVehicle::GetInfo()->GetSimulationMovement(),
-//         FGWheeledVehicleInfo(.h), AFGDrivingTargetList (Wegpunkt-Liste),
-//         IsAutopilotEnabled/Server_ToggleAutoPilot (Autopilot war Methode am Vehicle)
-//   NEU:  UFGVehicleAutopilotComponent, UFGVehiclePathPreset, AFGVehiclePathSegment/-Node,
-//         FGVehiclePathValidation (buildbares Pfad-Netz statt aufgezeichneter Route)
-//
-// Die alte Reflection (Vehicle / WheeledVehicle / TargetList / DockingStation) lässt sich
-// NICHT mechanisch portieren — die zugrundeliegende Spiel-API existiert nicht mehr.
-// Das Original liegt als FIRSourceStatic_Vehicle.cpp.disabled daneben (Anforderungs-Referenz).
-//
-// Neuimplementierung gegen die neue 1.2-API = geplantes Feature
-// "Fahrzeug-Routen/Stations (neu in 1.2)" — siehe PORT-1.2-FEATURE-VEHICLE-API.md.
-//
-// TODO FIN-1.2-PORT(vehicle): Reflection neu aufbauen. Kandidaten, die evtl. ohne das
-// Pfad-System weiter funktionieren und früh re-aktiviert werden könnten:
-//   - AFGBuildableDockingStation (Fuel/Inv/Docked/Undock/LoadMode) — unabhängig vom Pfad-System
-//   - AFGVehicle.health/maxHealth/isSelfDriving — Basis-Props
-// Jeweils gegen die 1.2-Header verifizieren, dann einzeln re-registrieren.
-
 #include "Reflection/Source/FIRSourceStaticMacros.h"
 
-// (Bewusst leer — registriert vorerst keine Vehicle-Typen.)
+#include "FGInventoryComponent.h"
+#include "FGVehicle.h"
+#include "WheeledVehicles/FGWheeledVehicle.h"
+#include "WheeledVehicles/FGWheeledVehicleIdentifier.h"
+#include "WheeledVehicles/FGVehiclePathSegment.h"
+#include "WheeledVehicles/FGVehiclePathNode.h"
+#include "Buildables/FGBuildableDockingStation.h"
+
+// FIN-1.2-PORT: Re-enabled the parts of the old vehicle/station reflection that
+// survive in Satisfactory 1.2. The self-driving waypoint system (AFGDrivingTargetList,
+// autopilot toggle, GetSimulationMovement, health/isSelfDriving on AFGVehicle) was
+// REMOVED in 1.2 (replaced by the buildable path-segment network) and is intentionally
+// dropped. The original is preserved as FIRSourceStatic_Vehicle.cpp.disabled.
+// Vehicle ROUTING against the new 1.2 path API is a separate, future feature.
+
+BeginClass(AFGVehicle, "Vehicle", "Vehicle", "The base class for all vehicles.")
+EndClass()
+
+BeginClass(AFGWheeledVehicle, "WheeledVehicle", "Wheeled Vehicle", "The base class for all wheeled vehicles (trucks/tractors/explorers).")
+BeginFunc(getFuelInv, "Get Fuel Inventory", "Returns the inventory that contains the fuel of the vehicle.") {
+	OutVal(0, RTrace<UFGInventoryComponent>, inventory, "Inventory", "The fuel inventory of the vehicle.")
+	Body()
+	inventory = Ctx.GetTrace() / self->GetFuelInventory();
+} EndFunc()
+BeginFunc(getStorageInv, "Get Storage Inventory", "Returns the inventory that contains the storage/cargo of the vehicle (solid items and fluids/gases).") {
+	OutVal(0, RTrace<UFGInventoryComponent>, inventory, "Inventory", "The storage inventory of the vehicle.")
+	Body()
+	inventory = Ctx.GetTrace() / self->GetStorageInventory();
+} EndFunc()
+BeginProp(RFloat, speed, "Speed", "The current forward speed of this vehicle (unreal units/s).") {
+	FIRReturn self->GetForwardSpeed();
+} EndProp()
+BeginProp(RInt, speedKMH, "Speed KMH", "The estimated speed of the vehicle in kilometers per hour.") {
+	FIRReturn (FIRInt) self->GetSpeedInKMH();
+} EndProp()
+BeginProp(RBool, hasFuel, "Has Fuel", "True if the vehicle currently has fuel to drive.") {
+	FIRReturn self->HasFuel();
+} EndProp()
+// Phase 2 (read-only): which segment of the shared road network the truck is on.
+// 1.2 has no public "drive to destination" verb, so routing is observe-only.
+BeginFunc(getCurrentPathSegment, "Get Current Path Segment", "Returns the vehicle path segment the truck is currently traversing, or nil if not on a path.") {
+	OutVal(0, RTrace<AFGVehiclePathSegment>, segment, "Segment", "The current path segment, or nil.")
+	Body()
+	segment = Ctx.GetTrace() / self->GetCurrentVehiclePathSegment();
+} EndFunc()
+BeginFunc(getIdentifier, "Get Identifier", "Returns the persistent identifier of this vehicle, which holds its name, route and autopilot state (the train-timetable analog).") {
+	OutVal(0, RTrace<AFGWheeledVehicleIdentifier>, identifier, "Identifier", "The vehicle identifier, or nil.")
+	Body()
+	identifier = Ctx.GetTrace() / self->GetVehicleIdentifier();
+} EndFunc()
+EndClass()
+
+// The truck's "timetable": its route is a list of waypoint GUIDs (path nodes). This
+// is the per-vehicle, train-like control surface CSS added in 1.2 - set the route,
+// add/remove stops, toggle autopilot. GUIDs are exchanged as strings.
+BeginClass(AFGWheeledVehicleIdentifier, "WheeledVehicleIdentifier", "Wheeled Vehicle Identifier", "Persistent info of a wheeled vehicle: name, route (waypoint GUIDs) and autopilot control.")
+BeginProp(RString, name, "Name", "The display name of the vehicle.") {
+	FIRReturn (FIRStr) self->GetVehicleName().ToString();
+} PropSet() {
+	self->SetVehicleName(FText::FromString(Val));
+} EndProp()
+BeginProp(RBool, isAutopilotEnabled, "Is Autopilot Enabled", "True if the vehicle's autopilot is enabled (drives its route automatically).") {
+	FIRReturn self->IsAutopilotEnabled();
+} PropSet() {
+	self->SetAutopilotEnabled(Val);
+} EndProp()
+BeginProp(RBool, canEnableAutopilot, "Can Enable Autopilot", "True if the autopilot can currently be enabled (valid route, on path, enough stations).") {
+	FIRReturn self->CanEnableAutopilot();
+} EndProp()
+BeginProp(RInt, autopilotError, "Autopilot Error", "The current autopilot error status: 0=None 1=StationUnreachable 2=NotOnPath 3=TooFewStations (see EVehicleAutopilotErrorStatus).") {
+	FIRReturn (FIRInt) self->GetAutopilotErrorStatus();
+} EndProp()
+BeginProp(RInt, currentWaypoint, "Current Waypoint", "The index of the waypoint in the route the vehicle is currently heading to.") {
+	FIRReturn (FIRInt) self->GetCurrentTargetWaypointIndex();
+} EndProp()
+BeginFunc(getOwnerVehicle, "Get Owner Vehicle", "Returns the wheeled vehicle this identifier belongs to.") {
+	OutVal(0, RTrace<AFGWheeledVehicle>, vehicle, "Vehicle", "The owning vehicle.")
+	Body()
+	vehicle = Ctx.GetTrace() / self->GetOwnerVehicle();
+} EndFunc()
+BeginFunc(getRoute, "Get Route", "Returns the vehicle's route as a list of waypoint GUID strings.") {
+	OutVal(0, RArray<RString>, route, "Route", "List of waypoint GUIDs (strings).")
+	Body()
+	TArray<FIRAny> out;
+	for (const FGuid& g : self->GetVehicleRoute()) out.Add((FIRStr) g.ToString());
+	route = out;
+} EndFunc()
+BeginFunc(setRoute, "Set Route", "Replaces the vehicle's route with the given list of waypoint GUID strings.", 0) {
+	InVal(0, RArray<RString>, route, "Route", "List of waypoint GUIDs (strings).")
+	Body()
+	TArray<FGuid> guids;
+	for (const FIRAny& a : route) { FGuid g; if (FGuid::Parse(a.GetString(), g)) guids.Add(g); }
+	self->SetVehicleRoute(guids);
+} EndFunc()
+BeginFunc(addWaypoint, "Add Waypoint", "Appends a waypoint (GUID string of a path node) to the route.", 0) {
+	InVal(0, RString, guid, "GUID", "The waypoint GUID string to append.")
+	Body()
+	FGuid g; if (!FGuid::Parse(guid, g)) throw FFIRException(TEXT("invalid GUID string"));
+	self->AddWaypoint(g);
+} EndFunc()
+BeginFunc(insertWaypoint, "Insert Waypoint", "Inserts a waypoint (GUID string) at the given index in the route.", 0) {
+	InVal(0, RInt, index, "Index", "The index to insert at.")
+	InVal(1, RString, guid, "GUID", "The waypoint GUID string to insert.")
+	Body()
+	FGuid g; if (!FGuid::Parse(guid, g)) throw FFIRException(TEXT("invalid GUID string"));
+	self->InsertWaypoint((int32)index, g);
+} EndFunc()
+BeginFunc(removeWaypoint, "Remove Waypoint", "Removes the waypoint at the given index from the route.", 0) {
+	InVal(0, RInt, index, "Index", "The index of the waypoint to remove.")
+	Body()
+	self->RemoveWaypointAtIndex((int32)index);
+} EndFunc()
+EndClass()
+
+BeginClass(AFGVehiclePathSegment, "VehiclePathSegment", "Vehicle Path Segment", "A single segment of the shared vehicle road network, connecting two path nodes.")
+BeginFunc(getStartNode, "Get Start Node", "Returns the path node at the entry of this segment.") {
+	OutVal(0, RTrace<AFGVehiclePathNode>, node, "Node", "The start node.")
+	Body()
+	node = Ctx.GetTrace() / self->GetStartNode();
+} EndFunc()
+BeginFunc(getEndNode, "Get End Node", "Returns the path node at the exit of this segment.") {
+	OutVal(0, RTrace<AFGVehiclePathNode>, node, "Node", "The end node.")
+	Body()
+	node = Ctx.GetTrace() / self->GetEndNode();
+} EndFunc()
+BeginFunc(getVehicles, "Get Vehicles", "Returns the wheeled vehicles currently traversing this segment.") {
+	OutVal(0, RArray<RTrace<AFGWheeledVehicle>>, vehicles, "Vehicles", "The vehicles on this segment.")
+	Body()
+	TArray<FIRAny> out;
+	for (AFGWheeledVehicle* v : self->GetVehicles()) out.Add(Ctx.GetTrace() / v);
+	vehicles = out;
+} EndFunc()
+EndClass()
+
+BeginClass(AFGVehiclePathNode, "VehiclePathNode", "Vehicle Path Node", "A junction/endpoint node in the shared vehicle road network.")
+BeginFunc(getArrivingConnections, "Get Arriving Connections", "Returns the segments that arrive at this node.") {
+	OutVal(0, RArray<RTrace<AFGVehiclePathSegment>>, segments, "Segments", "Arriving segments.")
+	Body()
+	TArray<FIRAny> out;
+	for (AFGVehiclePathSegment* s : self->GetArrivingConnections()) out.Add(Ctx.GetTrace() / s);
+	segments = out;
+} EndFunc()
+BeginFunc(getLeavingConnections, "Get Leaving Connections", "Returns the segments that leave from this node.") {
+	OutVal(0, RArray<RTrace<AFGVehiclePathSegment>>, segments, "Segments", "Leaving segments.")
+	Body()
+	TArray<FIRAny> out;
+	for (AFGVehiclePathSegment* s : self->GetLeavingConnections()) out.Add(Ctx.GetTrace() / s);
+	segments = out;
+} EndFunc()
+BeginProp(RBool, isTrivial, "Is Trivial", "True if this node is not a junction (at most one arriving and one leaving segment).") {
+	FIRReturn self->IsTrivialPathNode();
+} EndProp()
+BeginProp(RString, guid, "GUID", "The unique GUID string of this path node - use it as a waypoint in a vehicle route.") {
+	FIRReturn (FIRStr) self->GetPathNodeGUID().ToString();
+} EndProp()
+EndClass()
+
+BeginClass(AFGBuildableDockingStation, "DockingStation", "Docking Station", "A docking station for wheeled vehicles (trucks/tractors) to transfer cargo and fuel. Also covers fluid truck stations - fluids/gases are items in the cargo inventory.")
+BeginFunc(getFuelInv, "Get Fuel Inventory", "Returns the fuel inventory of the docking station.") {
+	OutVal(0, RTrace<UFGInventoryComponent>, inventory, "Inventory", "The fuel inventory of the docking station.")
+	Body()
+	inventory = Ctx.GetTrace() / self->GetFuelInventory();
+} EndFunc()
+BeginFunc(getInv, "Get Inventory", "Returns the cargo inventory of the docking station. For fluid truck stations this holds the liquid/gas items.") {
+	OutVal(0, RTrace<UFGInventoryComponent>, inventory, "Inventory", "The cargo inventory of this docking station.")
+	Body()
+	inventory = Ctx.GetTrace() / self->GetInventory();
+} EndFunc()
+BeginFunc(getDocked, "Get Docked", "Returns the currently docked actor (vehicle), or nil.") {
+	OutVal(0, RTrace<AActor>, docked, "Docked", "The currently docked actor.")
+	Body()
+	docked = Ctx.GetTrace() / self->GetDockedActor();
+} EndFunc()
+BeginFunc(undock, "Undock", "Forcibly undocks the currently docked vehicle from this docking station.", 0) {
+	Body()
+	self->ForceUndockActor();
+} EndFunc()
+BeginProp(RBool, isLoadMode, "Is Load Mode", "True if the docking station loads docked vehicles, false if it unloads them.") {
+	FIRReturn self->GetIsInLoadMode();
+} PropSet() {
+	self->SetIsInLoadMode(Val);
+} EndProp()
+BeginProp(RBool, isLoadUnloading, "Is Load Unloading", "True if the docking station is currently loading or unloading a docked vehicle.") {
+	FIRReturn self->IsLoadUnloading();
+} EndProp()
+BeginProp(RBool, isForceFuelType, "Is Force Fuel Type", "True if the docking station forcefully swaps the docked vehicle's fuel type.") {
+	FIRReturn self->GetIsForceVehicleFuelType();
+} PropSet() {
+	self->SetForceVehicleFuelType(Val);
+} EndProp()
+EndClass()
