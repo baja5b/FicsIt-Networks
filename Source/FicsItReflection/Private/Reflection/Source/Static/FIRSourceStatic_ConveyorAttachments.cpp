@@ -4,6 +4,10 @@
 #include "Buildables/FGBuildableMergerPriority.h"
 #include "Buildables/FGBuildableConveyorMonitor.h"
 #include "Resources/FGItemDescriptor.h"
+#include "Resources/FGWildCardDescriptor.h"
+#include "Resources/FGOverflowDescriptor.h"
+#include "Resources/FGAnyUndefinedDescriptor.h"
+#include "Resources/FGNoneDescriptor.h"
 
 // Exposes the configuration of vanilla conveyor attachments (Smart/Programmable
 // Splitter, Priority Merger) to the FIN reflection system so a computer can
@@ -54,6 +58,34 @@ BeginFunc(removeSortRule, "Remove Sort Rule", "Removes the filter rule at the gi
 BeginFunc(clearSortRules, "Clear Sort Rules", "Removes all filter rules from this splitter.", 0) {
 	Body()
 	self->SetSortRules(TArray<FSplitterSortRule>());
+} EndFunc()
+
+// The special filter "item types" (Any/Overflow/AnyUndefined) are abstract
+// descriptor classes, not registered in the reflection class table, so a Lua
+// script cannot reach them via classes[...]. Expose them as getters that
+// compose with addSortRule/setSortRule, e.g. splitter:addSortRule(splitter:getOverflowFilter(), 2).
+BeginFunc(getWildcardFilter, "Get Wildcard Filter", "Returns the 'Any' wildcard filter item type, for use as the item type in addSortRule/setSortRule.") {
+	OutVal(0, RClass<UFGItemDescriptor>, filter, "Filter", "The wildcard (Any) filter descriptor class.")
+	Body()
+	filter = (FIRAny)(UClass*)UFGWildCardDescriptor::StaticClass();
+} EndFunc()
+
+BeginFunc(getOverflowFilter, "Get Overflow Filter", "Returns the 'Overflow' filter item type, for use as the item type in addSortRule/setSortRule.") {
+	OutVal(0, RClass<UFGItemDescriptor>, filter, "Filter", "The overflow filter descriptor class.")
+	Body()
+	filter = (FIRAny)(UClass*)UFGOverflowDescriptor::StaticClass();
+} EndFunc()
+
+BeginFunc(getAnyUndefinedFilter, "Get Any-Undefined Filter", "Returns the 'Any Undefined' filter item type (items without a specific rule), for use as the item type in addSortRule/setSortRule.") {
+	OutVal(0, RClass<UFGItemDescriptor>, filter, "Filter", "The any-undefined filter descriptor class.")
+	Body()
+	filter = (FIRAny)(UClass*)UFGAnyUndefinedDescriptor::StaticClass();
+} EndFunc()
+
+BeginFunc(getNoneFilter, "Get None Filter", "Returns the 'None' filter item type (route nothing to the output), for use as the item type in addSortRule/setSortRule.") {
+	OutVal(0, RClass<UFGItemDescriptor>, filter, "Filter", "The none filter descriptor class.")
+	Body()
+	filter = (FIRAny)(UClass*)UFGNoneDescriptor::StaticClass();
 } EndFunc()
 EndClass()
 
