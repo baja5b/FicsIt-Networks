@@ -168,10 +168,15 @@ BeginFunc(getInv, "Get Inventory", "Returns the cargo inventory of the docking s
 	Body()
 	inventory = Ctx.GetTrace() / self->GetInventory();
 } EndFunc()
-BeginFunc(getDocked, "Get Docked", "Returns the currently docked actor (vehicle), or nil.") {
+BeginFunc(getDocked, "Get Docked", "Returns the currently docked actor (only set while a vehicle is actively loading/unloading), or nil.") {
 	OutVal(0, RTrace<AActor>, docked, "Docked", "The currently docked actor.")
 	Body()
 	docked = Ctx.GetTrace() / self->GetDockedActor();
+} EndFunc()
+BeginFunc(getPathNode, "Get Path Node", "Returns the vehicle path node this station sits on - the entry point into the road network. Use it to find vehicles via the connected segments even when not actively docked.") {
+	OutVal(0, RTrace<AFGVehiclePathNode>, node, "Node", "The station's docking path node, or nil.")
+	Body()
+	node = Ctx.GetTrace() / self->GetDockingPathNode();
 } EndFunc()
 BeginFunc(undock, "Undock", "Forcibly undocks the currently docked vehicle from this docking station.", 0) {
 	Body()
