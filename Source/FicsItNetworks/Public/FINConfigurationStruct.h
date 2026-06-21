@@ -7,6 +7,7 @@
 
 struct FFINConfigurationStruct_LogViewer;
 struct FFINConfigurationStruct_Blueprints;
+struct FFINConfigurationStruct_Startup;
 
 USTRUCT(BlueprintType)
 struct FFINConfigurationStruct_LogViewer {
@@ -33,6 +34,17 @@ public:
     bool EnableParametricBlueprints{};
 };
 
+USTRUCT(BlueprintType)
+struct FFINConfigurationStruct_Startup {
+    GENERATED_BODY()
+public:
+    UPROPERTY(BlueprintReadWrite)
+    bool bEnableStartupCommands{};
+
+    UPROPERTY(BlueprintReadWrite)
+    TArray<FString> StartupCommands;
+};
+
 /* Struct generated from Mod Configuration Asset '/FicsItNetworks/FINConfiguration' */
 USTRUCT(BlueprintType)
 struct FFINConfigurationStruct {
@@ -43,6 +55,9 @@ public:
 
     UPROPERTY(BlueprintReadWrite)
     FFINConfigurationStruct_Blueprints Blueprints{};
+
+    UPROPERTY(BlueprintReadWrite)
+    FFINConfigurationStruct_Startup Startup{};
 
     /* Retrieves active configuration value and returns object of this struct containing it */
     static FFINConfigurationStruct GetActiveConfig(UObject* WorldContext) {
