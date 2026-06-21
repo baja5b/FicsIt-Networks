@@ -44,11 +44,13 @@ void AFINNetworkAdapter::RegisterAdapterSettings() {
 	RegistererAdapterSetting(FString(TEXT("/Game/FactoryGame/Buildable/Factory/CentralStorage/Build_CentralStorage.Build_CentralStorage_C")), FFINAdapterSettings{FVector(290,0,400), FRotator(0,-90,0), true, 2});
 	// Configurable conveyor attachments - sort rules / input priorities exposed via FIN reflection.
 	// Connector positions taken from FIN's own Codeable Splitter/Merger (same form factor).
-	RegistererAdapterSetting(FString(TEXT("/Game/FactoryGame/Buildable/Factory/CA_SplitterSmart/Build_ConveyorAttachmentSplitterSmart.Build_ConveyorAttachmentSplitterSmart_C")), FFINAdapterSettings{FVector(175, -178, 96), FRotator(0, 0, 0), false, 2});
-	RegistererAdapterSetting(FString(TEXT("/Game/FactoryGame/Buildable/Factory/CA_SplitterProgrammable/Build_ConveyorAttachmentSplitterProgrammable.Build_ConveyorAttachmentSplitterProgrammable_C")), FFINAdapterSettings{FVector(175, -178, 96), FRotator(0, 0, 0), false, 2});
-	RegistererAdapterSetting(FString(TEXT("/Game/FactoryGame/Buildable/Factory/CA_MergerPriority/Build_ConveyorAttachmentMergerPriority.Build_ConveyorAttachmentMergerPriority_C")), FFINAdapterSettings{FVector(-166.94, 168.98, 135), FRotator(0, 0, 0), false, 2});
+	// mesh=true: vanilla buildables have no FIN connector component, so the adapter must show
+	// its own visible connector mesh (like Storage/Door) - otherwise the cable starts "in mid-air".
+	RegistererAdapterSetting(FString(TEXT("/Game/FactoryGame/Buildable/Factory/CA_SplitterSmart/Build_ConveyorAttachmentSplitterSmart.Build_ConveyorAttachmentSplitterSmart_C")), FFINAdapterSettings{FVector(175, -178, 96), FRotator(0, 225, 0), true, 2});
+	RegistererAdapterSetting(FString(TEXT("/Game/FactoryGame/Buildable/Factory/CA_SplitterProgrammable/Build_ConveyorAttachmentSplitterProgrammable.Build_ConveyorAttachmentSplitterProgrammable_C")), FFINAdapterSettings{FVector(175, -178, 96), FRotator(0, 225, 0), true, 2});
+	RegistererAdapterSetting(FString(TEXT("/Game/FactoryGame/Buildable/Factory/CA_MergerPriority/Build_ConveyorAttachmentMergerPriority.Build_ConveyorAttachmentMergerPriority_C")), FFINAdapterSettings{FVector(-166.94, 168.98, 135), FRotator(0, 45, 0), true, 2});
 	// Conveyor Throughput Monitor - reads items/min via FIN reflection. Connector mounted underneath the monitor.
-	RegistererAdapterSetting(FString(TEXT("/Game/FactoryGame/Buildable/Factory/ConveyorMonitor/Build_ConveyorMonitor.Build_ConveyorMonitor_C")), FFINAdapterSettings{FVector(0, 0, -80), FRotator(0, 0, 0), false, 2});
+	RegistererAdapterSetting(FString(TEXT("/Game/FactoryGame/Buildable/Factory/ConveyorMonitor/Build_ConveyorMonitor.Build_ConveyorMonitor_C")), FFINAdapterSettings{FVector(0, 0, -80), FRotator(0, 0, 0), true, 2});
 }
 
 bool AFINNetworkAdapter::FindConnection(AActor* Actor, FVector HitLocation, FTransform& OutTransform, bool& OutMesh, int& OutMaxCables) {
