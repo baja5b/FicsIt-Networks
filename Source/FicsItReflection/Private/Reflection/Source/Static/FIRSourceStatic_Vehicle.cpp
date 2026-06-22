@@ -6,6 +6,8 @@
 #include "WheeledVehicles/FGWheeledVehicleIdentifier.h"
 #include "WheeledVehicles/FGVehiclePathSegment.h"
 #include "WheeledVehicles/FGVehiclePathNode.h"
+#include "WheeledVehicles/FGVehicleSubsystem.h"
+#include "WheeledVehicles/FGDockingStationIdentifier.h"
 #include "Buildables/FGBuildableDockingStation.h"
 
 // FIN-1.2-PORT: Re-enabled the parts of the old vehicle/station reflection that
@@ -94,6 +96,30 @@ BeginFunc(setRoute, "Set Route", "Replaces the vehicle's route with the given li
 	for (const FIRAny& a : route) { FGuid g; if (FGuid::Parse(a.GetString(), g)) guids.Add(g); }
 	self->SetVehicleRoute(guids);
 } EndFunc()
+BeginFunc(findPathTo, "Find Path To", "Computes a valid road path (list of path-node GUID strings) from this vehicle's current position to the given target node GUID, respecting THIS vehicle's type. Empty if the target is not reachable for this vehicle (e.g. it sits on another vehicle type's path). Feed the result to setRoute to drive there without jumping across disconnected sections.", 0) {
+	InVal(0, RString, targetGuid, "Target GUID", "The path-node GUID to drive to (e.g. a station's getPathNode().guid).")
+	OutVal(1, RArray<RString>, path, "Path", "Path-node GUIDs forming a drivable route, or empty if unreachable for this vehicle.")
+	Body()
+	TArray<FIRAny> out;
+	AFGWheeledVehicle* veh = self->GetOwnerVehicle();
+	FGuid toG;
+	if (IsValid(veh) && FGuid::Parse(targetGuid, toG)) {
+		AFGVehicleSubsystem* sub = AFGVehicleSubsystem::Get(veh->GetWorld());
+		AFGVehiclePathSegment* seg = veh->GetCurrentVehiclePathSegment();
+		AFGVehiclePathNode* fromNode = IsValid(seg) ? seg->GetStartNode() : nullptr;
+		if (sub && IsValid(fromNode)) {
+			FGuid fromG = fromNode->GetPathNodeGUID();
+			UFGVehiclePathNetwork* net = sub->FindNetworkByPathNodeGuid(fromG);
+			if (net) {
+				TArray<FGuid> p;
+				if (net->FindVehiclePath(fromG, toG, veh->GetVehiclePathPreset(), p)) {
+					for (const FGuid& g : p) out.Add((FIRStr) g.ToString());
+				}
+			}
+		}
+	}
+	path = out;
+} EndFunc()
 BeginFunc(addWaypoint, "Add Waypoint", "Appends a waypoint (GUID string of a path node) to the route.", 0) {
 	InVal(0, RString, guid, "GUID", "The waypoint GUID string to append.")
 	Body()
@@ -177,6 +203,42 @@ BeginFunc(getPathNode, "Get Path Node", "Returns the vehicle path node this stat
 	OutVal(0, RTrace<AFGVehiclePathNode>, node, "Node", "The station's docking path node, or nil.")
 	Body()
 	node = Ctx.GetTrace() / self->GetDockingPathNode();
+} EndFunc()
+BeginFunc(getNetworkStations, "Get Network Stations", "Returns ALL docking stations on the same road network as this one - even ones NOT wired to the FicsIt-Network. Like a train's track graph: you only need ONE station wired to discover all the rest (trucks/tractors/explorers + fluid).") {
+	OutVal(0, RArray<RTrace<AFGBuildableDockingStation>>, stations, "Stations", "All docking stations in this station's vehicle path network.")
+	Body()
+	TArray<FIRAny> out;
+	AFGVehicleSubsystem* sub = AFGVehicleSubsystem::Get(self->GetWorld());
+	AFGVehiclePathNode* node = self->GetDockingPathNode();
+	if (sub && IsValid(node)) {
+		UFGVehiclePathNetwork* net = sub->FindNetworkByPathNodeGuid(node->GetPathNodeGUID());
+		if (net) {
+			TArray<AFGDockingStationIdentifier*> ids;
+			net->PopulateNetworkStations(ids);
+			for (AFGDockingStationIdentifier* id : ids) {
+				if (IsValid(id) && IsValid(id->GetStation())) out.Add(Ctx.GetTrace() / id->GetStation());
+			}
+		}
+	}
+	stations = out;
+} EndFunc()
+BeginFunc(getNetworkVehicles, "Get Network Vehicles", "Returns ALL wheeled vehicles on the same road network as this station, wherever they are. Use to find/route trucks/tractors/explorers without a manual graph walk.") {
+	OutVal(0, RArray<RTrace<AFGWheeledVehicle>>, vehicles, "Vehicles", "All wheeled vehicles in this station's vehicle path network.")
+	Body()
+	TArray<FIRAny> out;
+	AFGVehicleSubsystem* sub = AFGVehicleSubsystem::Get(self->GetWorld());
+	AFGVehiclePathNode* node = self->GetDockingPathNode();
+	if (sub && IsValid(node)) {
+		UFGVehiclePathNetwork* net = sub->FindNetworkByPathNodeGuid(node->GetPathNodeGUID());
+		if (net) {
+			TArray<AFGWheeledVehicleIdentifier*> ids;
+			net->PopulateNetworkVehicles(ids);
+			for (AFGWheeledVehicleIdentifier* id : ids) {
+				if (IsValid(id) && IsValid(id->GetOwnerVehicle())) out.Add(Ctx.GetTrace() / id->GetOwnerVehicle());
+			}
+		}
+	}
+	vehicles = out;
 } EndFunc()
 BeginFunc(undock, "Undock", "Forcibly undocks the currently docked vehicle from this docking station.", 0) {
 	Body()
