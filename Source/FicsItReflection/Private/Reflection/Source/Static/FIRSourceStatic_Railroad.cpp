@@ -139,7 +139,7 @@ BeginSignal(FinishDocking, "Finish Docking", "Triggers when a train finished the
 EndSignal()
 BeginSignal(CancelDocking, "Cancel Docking", "Triggers when a train cancels the docking procedure.")
 EndSignal()
-BeginProp(RString, name, "Name", "The name of the railroad station.") {
+BeginProp(RString, name, "Name", "The name of the railroad station.", 0) {
 	FIRReturn self->GetStationIdentifier()->GetStationName().ToString();
 } PropSet() {
 	self->GetStationIdentifier()->SetStationName(FText::FromString(Val));
