@@ -9,6 +9,7 @@
 #include "WheeledVehicles/FGVehicleSubsystem.h"
 #include "WheeledVehicles/FGDockingStationIdentifier.h"
 #include "Buildables/FGBuildableDockingStation.h"
+#include "Components/SplineComponent.h"
 
 // FIN-1.2-PORT: Re-enabled the parts of the old vehicle/station reflection that
 // survive in Satisfactory 1.2. The self-driving waypoint system (AFGDrivingTargetList,
@@ -58,12 +59,12 @@ EndClass()
 // is the per-vehicle, train-like control surface CSS added in 1.2 - set the route,
 // add/remove stops, toggle autopilot. GUIDs are exchanged as strings.
 BeginClass(AFGWheeledVehicleIdentifier, "WheeledVehicleIdentifier", "Wheeled Vehicle Identifier", "Persistent info of a wheeled vehicle: name, route (waypoint GUIDs) and autopilot control.")
-BeginProp(RString, name, "Name", "The display name of the vehicle.") {
+BeginProp(RString, name, "Name", "The display name of the vehicle.", 0) {
 	FIRReturn (FIRStr) self->GetVehicleName().ToString();
 } PropSet() {
 	self->SetVehicleName(FText::FromString(Val));
 } EndProp()
-BeginProp(RBool, isAutopilotEnabled, "Is Autopilot Enabled", "True if the vehicle's autopilot is enabled (drives its route automatically).") {
+BeginProp(RBool, isAutopilotEnabled, "Is Autopilot Enabled", "True if the vehicle's autopilot is enabled (drives its route automatically).", 0) {
 	FIRReturn self->IsAutopilotEnabled();
 } PropSet() {
 	self->SetAutopilotEnabled(Val);
@@ -76,6 +77,12 @@ BeginProp(RInt, autopilotError, "Autopilot Error", "The current autopilot error 
 } EndProp()
 BeginProp(RInt, currentWaypoint, "Current Waypoint", "The index of the waypoint in the route the vehicle is currently heading to.") {
 	FIRReturn (FIRInt) self->GetCurrentTargetWaypointIndex();
+} EndProp()
+BeginProp(RString, currentFromNode, "Current From Node", "GUID string of the path node the vehicle is currently driving FROM (its current segment). Log this over time to capture the path actually driven and compare it to a findPathTo prediction.") {
+	FIRReturn (FIRStr) self->GetCurrentFromPathNodeGUID().ToString();
+} EndProp()
+BeginProp(RString, currentToNode, "Current To Node", "GUID string of the path node the vehicle is currently driving TO (its current segment).") {
+	FIRReturn (FIRStr) self->GetCurrentToPathNodeGUID().ToString();
 } EndProp()
 BeginFunc(getOwnerVehicle, "Get Owner Vehicle", "Returns the wheeled vehicle this identifier belongs to.") {
 	OutVal(0, RTrace<AFGWheeledVehicle>, vehicle, "Vehicle", "The owning vehicle.")
@@ -99,8 +106,10 @@ BeginFunc(setRoute, "Set Route", "Replaces the vehicle's route with the given li
 BeginFunc(findPathTo, "Find Path To", "Computes a valid road path (list of path-node GUID strings) from this vehicle's current position to the given target node GUID, respecting THIS vehicle's type. Empty if the target is not reachable for this vehicle (e.g. it sits on another vehicle type's path). Feed the result to setRoute to drive there without jumping across disconnected sections.", 0) {
 	InVal(0, RString, targetGuid, "Target GUID", "The path-node GUID to drive to (e.g. a station's getPathNode().guid).")
 	OutVal(1, RArray<RString>, path, "Path", "Path-node GUIDs forming a drivable route, or empty if unreachable for this vehicle.")
+	OutVal(2, RFloat, length, "Length", "Total length of the path in centimeters (0 if unreachable). This is the same path the autopilot drives, so it's the real driving distance.")
 	Body()
 	TArray<FIRAny> out;
+	float total = 0.0f;
 	AFGWheeledVehicle* veh = self->GetOwnerVehicle();
 	FGuid toG;
 	if (IsValid(veh) && FGuid::Parse(targetGuid, toG)) {
@@ -114,11 +123,29 @@ BeginFunc(findPathTo, "Find Path To", "Computes a valid road path (list of path-
 				TArray<FGuid> p;
 				if (net->FindVehiclePath(fromG, toG, veh->GetVehiclePathPreset(), p)) {
 					for (const FGuid& g : p) out.Add((FIRStr) g.ToString());
+					// Gesamtlaenge: Spline-Laengen der Segmente entlang des Pfads aufsummieren.
+					if (p.Num() >= 2) {
+						TMap<FGuid, AFGVehiclePathNode*> nodeMap;
+						for (AFGVehiclePathNode* n : net->GetNetworkElementsOnServer()) if (IsValid(n)) nodeMap.Add(n->GetPathNodeGUID(), n);
+						for (int32 i = 0; i + 1 < p.Num(); i++) {
+							AFGVehiclePathNode** fromN = nodeMap.Find(p[i]);
+							AFGVehiclePathNode** toN = nodeMap.Find(p[i + 1]);
+							if (fromN && toN && IsValid(*fromN) && IsValid(*toN)) {
+								for (AFGVehiclePathSegment* s : (*fromN)->GetLeavingConnections()) {
+									if (IsValid(s) && s->GetEndNode() == *toN) {
+										if (USplineComponent* spl = s->GetSplineComponent()) total += spl->GetSplineLength();
+										break;
+									}
+								}
+							}
+						}
+					}
 				}
 			}
 		}
 	}
 	path = out;
+	length = (FIRFloat) total;
 } EndFunc()
 BeginFunc(addWaypoint, "Add Waypoint", "Appends a waypoint (GUID string of a path node) to the route.", 0) {
 	InVal(0, RString, guid, "GUID", "The waypoint GUID string to append.")
@@ -244,14 +271,14 @@ BeginFunc(undock, "Undock", "Forcibly undocks the currently docked vehicle from 
 	Body()
 	self->ForceUndockActor();
 } EndFunc()
-BeginProp(RString, name, "Name", "The name of this docking station (as shown in the vehicle station list / on the map). Settable.") {
+BeginProp(RString, name, "Name", "The name of this docking station (as shown in the vehicle station list / on the map). Settable.", 0) {
 	AFGDockingStationIdentifier* id = self->GetStationIdentifier();
 	FIRReturn (FIRStr)(id ? id->GetStationName().ToString() : FString());
 } PropSet() {
 	AFGDockingStationIdentifier* id = self->GetStationIdentifier();
 	if (id) id->SetStationName(FText::FromString(Val));
 } EndProp()
-BeginProp(RBool, isLoadMode, "Is Load Mode", "True if the docking station loads docked vehicles, false if it unloads them.") {
+BeginProp(RBool, isLoadMode, "Is Load Mode", "True if the docking station loads docked vehicles, false if it unloads them.", 0) {
 	FIRReturn self->GetIsInLoadMode();
 } PropSet() {
 	self->SetIsInLoadMode(Val);
@@ -259,7 +286,7 @@ BeginProp(RBool, isLoadMode, "Is Load Mode", "True if the docking station loads 
 BeginProp(RBool, isLoadUnloading, "Is Load Unloading", "True if the docking station is currently loading or unloading a docked vehicle.") {
 	FIRReturn self->IsLoadUnloading();
 } EndProp()
-BeginProp(RBool, isForceFuelType, "Is Force Fuel Type", "True if the docking station forcefully swaps the docked vehicle's fuel type.") {
+BeginProp(RBool, isForceFuelType, "Is Force Fuel Type", "True if the docking station forcefully swaps the docked vehicle's fuel type.", 0) {
 	FIRReturn self->GetIsForceVehicleFuelType();
 } PropSet() {
 	self->SetForceVehicleFuelType(Val);
