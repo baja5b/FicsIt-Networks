@@ -3,6 +3,7 @@
 #include "Async/ParallelFor.h"
 #include "ComputerModules/PCI/FINComputerGPUT1.h"
 #include "ComputerModules/PCI/FINComputerGPUT2.h"
+#include "Components/FINModuleBase.h"
 #include "GameFramework/Actor.h"
 #include "Reflection/Source/FIRSourceStaticMacros.h"
 
@@ -227,3 +228,19 @@ BeginProp(RStruct<FLinearColor>, outlineColor, "Outline Color", "The color of th
 	self->OutlineColor = Val.QuantizeRound();
 } EndProp()
 EndStruct()
+
+// Base class of every module placed on a modular I/O panel. Exposes the module's position on its
+// panel grid (already stored in ModulePos by setPanel, just not reflected before). Panel module
+// Blueprints inherit these props via the reflection parent chain, so e.g. a button and the indicator
+// directly above it can be paired by grid coordinate instead of guessing from world location.
+BeginClass(AFINModuleBase, "PanelModule", "Panel Module", "A module placed on a modular I/O panel (button, switch, potentiometer, indicator, display, ...).")
+BeginProp(RInt, panelX, "Panel X", "The X position of this module on its panel's grid.") {
+	FIRReturn (FIRInt)FMath::RoundToInt(self->ModulePos.X);
+} EndProp()
+BeginProp(RInt, panelY, "Panel Y", "The Y position of this module on its panel's grid.") {
+	FIRReturn (FIRInt)FMath::RoundToInt(self->ModulePos.Y);
+} EndProp()
+BeginProp(RInt, panelRotation, "Panel Rotation", "The rotation step (0-3) of this module on its panel.") {
+	FIRReturn (FIRInt)FMath::RoundToInt(self->ModulePos.Z);
+} EndProp()
+EndClass()
