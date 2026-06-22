@@ -117,6 +117,7 @@ BeginProp(RInt, itemsPerMinute, "Items Per Minute", "The measured average throug
 } EndProp()
 BeginProp(RFloat, confidence, "Confidence", "How reliable the current measurement is, from 0 (none) to 1 (full).") {
 	// GetConfidence() is on a 0..100 scale in-game; normalize to the documented 0..1 ratio.
-	FIRReturn self->GetConfidence() / 100.0f;
+	// Parens are required: FIRReturn expands to `return (FIRAny)`, and the cast binds tighter than '/'.
+	FIRReturn (self->GetConfidence() / 100.0f);
 } EndProp()
 EndClass()
