@@ -244,6 +244,13 @@ BeginFunc(undock, "Undock", "Forcibly undocks the currently docked vehicle from 
 	Body()
 	self->ForceUndockActor();
 } EndFunc()
+BeginProp(RString, name, "Name", "The name of this docking station (as shown in the vehicle station list / on the map). Settable.") {
+	AFGDockingStationIdentifier* id = self->GetStationIdentifier();
+	FIRReturn (FIRStr)(id ? id->GetStationName().ToString() : FString());
+} PropSet() {
+	AFGDockingStationIdentifier* id = self->GetStationIdentifier();
+	if (id) id->SetStationName(FText::FromString(Val));
+} EndProp()
 BeginProp(RBool, isLoadMode, "Is Load Mode", "True if the docking station loads docked vehicles, false if it unloads them.") {
 	FIRReturn self->GetIsInLoadMode();
 } PropSet() {

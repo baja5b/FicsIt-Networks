@@ -14,6 +14,11 @@ BeginProp(RInt, status, "Status", "The current drone status: 0=NoDrone 1=Docked 
 	if (!self->GetInfo()) throw FFIRException(TEXT("Drone station has no info object"));
 	FIRReturn (FIRInt) self->GetInfo()->GetDroneStatus();
 } EndProp()
+BeginProp(RString, name, "Name", "The name/label of this drone station (shown on the map). Settable.") {
+	FIRReturn (FIRStr) self->GetActorRepresentationText().ToString();
+} PropSet() {
+	self->SetActorRepresentationText(FText::FromString(Val));
+} EndProp()
 BeginFunc(getInputInventory, "Get Input Inventory", "Returns the input inventory (where the docked drone unloads into). Holds solid items and fluids/gases.") {
 	OutVal(0, RTrace<UFGInventoryComponent>, inventory, "Inventory", "The input inventory of the drone station.")
 	Body()
