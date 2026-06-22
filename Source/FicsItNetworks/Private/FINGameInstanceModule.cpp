@@ -20,11 +20,11 @@
 #include <windows.h>
 #include "Windows/HideWindowsPlatformTypes.h"
 
-// Job Object, das ueber die gesamte Spiel-Prozess-Lebensdauer offen gehalten
-// wird. Alle Startup-Prozesse werden ihm zugewiesen; das Limit-Flag
-// JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE sorgt dafuer, dass Windows beim Beenden
-// des Spiels (sauber ODER per Absturz - dann schliesst das OS alle Handles)
-// jeden zugewiesenen Prozess mitkillt. So ueberlebt kein verwaister Server.
+// Job object that is kept open for the entire lifetime of the game process.
+// All startup processes are assigned to it; the limit flag
+// JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE ensures that when the game exits
+// (cleanly OR via a crash - in which case the OS closes all handles) Windows
+// kills every assigned process along with it. This way no orphaned server survives.
 static HANDLE GFINStartupJobObject = nullptr;
 #endif
 
@@ -56,7 +56,7 @@ static void FINLaunchStartupCommands(UGameInstance* GameInstance) {
 		UE_LOG(LogFicsItNetworks, Warning, TEXT("[FIN Startup] launching: %s"), *CommandLine);
 
 #if PLATFORM_WINDOWS
-		// Job Object einmalig anlegen (Kill-on-Close -> Kinder sterben mit dem Spiel).
+		// Create the job object once (kill-on-close -> children die with the game).
 		if (!GFINStartupJobObject) {
 			GFINStartupJobObject = CreateJobObject(nullptr, nullptr);
 			if (GFINStartupJobObject) {
@@ -68,8 +68,8 @@ static void FINLaunchStartupCommands(UGameInstance* GameInstance) {
 			}
 		}
 
-		// CreateProcessW braucht einen schreibbaren Command-Line-Puffer und parst
-		// Exe + Args selbst (inkl. quoted Pfade) - sucht die Exe ueber PATH.
+		// CreateProcessW needs a writable command-line buffer and parses
+		// exe + args itself (including quoted paths) - it looks up the exe via PATH.
 		TArray<TCHAR> CmdBuffer;
 		CmdBuffer.Append(*CommandLine, CommandLine.Len());
 		CmdBuffer.Add(TEXT('\0'));
@@ -78,8 +78,8 @@ static void FINLaunchStartupCommands(UGameInstance* GameInstance) {
 		StartupInfo.cb = sizeof(StartupInfo);
 		PROCESS_INFORMATION ProcInfo = {};
 
-		// CREATE_NO_WINDOW: nie eine Konsole zeigen (gilt fuer JEDES Programm,
-		// nicht nur python). CREATE_SUSPENDED: erst dem Job zuweisen, dann starten.
+		// CREATE_NO_WINDOW: never show a console (applies to EVERY program,
+		// not just python). CREATE_SUSPENDED: assign to the job first, then start.
 		const DWORD CreationFlags = CREATE_NO_WINDOW | CREATE_SUSPENDED;
 		if (CreateProcessW(nullptr, CmdBuffer.GetData(), nullptr, nullptr, false, CreationFlags, nullptr, nullptr, &StartupInfo, &ProcInfo)) {
 			if (GFINStartupJobObject) {
@@ -89,12 +89,12 @@ static void FINLaunchStartupCommands(UGameInstance* GameInstance) {
 			}
 			ResumeThread(ProcInfo.hThread);
 			CloseHandle(ProcInfo.hThread);
-			CloseHandle(ProcInfo.hProcess); // Job haelt die Referenz; unsere darf zu.
+			CloseHandle(ProcInfo.hProcess); // The job holds the reference; ours can be closed.
 		} else {
 			UE_LOG(LogFicsItNetworks, Error, TEXT("[FIN Startup] CreateProcess failed (err %u): %s"), (uint32)GetLastError(), *CommandLine);
 		}
 #else
-		// Nicht-Windows: detached Fallback (ohne Job-Object-Lifetime-Management).
+		// Non-Windows: detached fallback (without job-object lifetime management).
 		FString Exe, Args;
 		if (CommandLine.StartsWith(TEXT("\""))) {
 			const int32 EndQuote = CommandLine.Find(TEXT("\""), ESearchCase::CaseSensitive, ESearchDir::FromStart, 1);
