@@ -856,6 +856,28 @@ BeginFunc(getStations, "Get Stations", "Returns a list of all trainstations in t
 	}
 	stations = Stations;
 } EndFunc()
+BeginFunc(getAllTrains, "Get All Trains", "Returns a list of ALL trains in the world, including trains on rail networks that have no station. Ignores this graph's track ID.") {
+	OutVal(0, RArray<RTrace<AFGTrain>>, trains, "Trains", "The list of all trains in the world.")
+	Body()
+	TArray<FIRAny> Trains;
+	TArray<AFGTrain*> TrainList;
+	AFGRailroadSubsystem::Get(*self->Trace)->GetAllTrains(TrainList);
+	for (AFGTrain* Train : TrainList) {
+		if (IsValid(Train)) Trains.Add(self->Trace / Train);
+	}
+	trains = Trains;
+} EndFunc()
+BeginFunc(getAllStations, "Get All Stations", "Returns a list of ALL train stations in the world. Ignores this graph's track ID.") {
+	OutVal(0, RArray<RTrace<AFGBuildableRailroadStation>>, stations, "Stations", "The list of all train stations in the world.")
+	Body()
+	TArray<FIRAny> Stations;
+	TArray<AFGTrainStationIdentifier*> StationList;
+	AFGRailroadSubsystem::Get(*self->Trace)->GetAllTrainStations(StationList);
+	for (const auto& Station : StationList) {
+		if (IsValid(Station)) Stations.Add(self->Trace / Station->mStation);
+	}
+	stations = Stations;
+} EndFunc()
 EndStruct()
 
 // TODO: 1.0: Redo Railroad Signal Blocks

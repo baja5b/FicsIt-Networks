@@ -243,4 +243,36 @@ BeginProp(RInt, panelY, "Panel Y", "The Y position of this module on its panel's
 BeginProp(RInt, panelRotation, "Panel Rotation", "The rotation step (0-3) of this module on its panel.") {
 	FIRReturn (FIRInt)FMath::RoundToInt(self->ModulePos.Z);
 } EndProp()
+BeginProp(RString, text, "Text", "Free label text rendered on the module's front face. Empty string = hidden, so buttons/potis without a set text stay blank.", 0) {
+	FIRReturn (FIRStr)self->LabelText;
+} PropSet() {
+	self->SetLabelText(Val);
+} EndProp()
+BeginProp(RFloat, textSize, "Text Size", "World-space height of the label text in cm.", 0) {
+	FIRReturn (FIRFloat)self->LabelTextSize;
+} PropSet() {
+	self->SetLabelTextSize((float)Val);
+} EndProp()
+BeginFunc(setText, "Set Text", "Sets the free label text rendered on the module's front face. Empty hides it.", 0) {
+	InVal(0, RString, text, "Text", "The new label text. Empty string hides the label.")
+	Body()
+	self->SetLabelText(text);
+} EndFunc()
+BeginProp(RStruct<FVector>, textOffset, "Text Offset", "Relative position (cm) of the label text on the module. Live-tunable.", 0) {
+	FIRReturn (FIRStruct)self->LabelTextOffset;
+} PropSet() {
+	self->SetTextOffset(Val);
+} EndProp()
+BeginProp(RStruct<FRotator>, textRotation, "Text Rotation", "Relative rotation of the label text (yaw 180 faces the player). Live-tunable.", 0) {
+	FIRReturn (FIRStruct)self->LabelTextRotation;
+} PropSet() {
+	self->SetTextRotation(Val);
+} EndProp()
+BeginFunc(setTextColor, "Set Text Color", "Sets the label text color (RGB, each 0..1). Live-tunable for contrast.", 0) {
+	InVal(0, RFloat, r, "R", "Red 0..1")
+	InVal(1, RFloat, g, "G", "Green 0..1")
+	InVal(2, RFloat, b, "B", "Blue 0..1")
+	Body()
+	self->SetLabelTextColor(FLinearColor((float)r, (float)g, (float)b, 1.0f));
+} EndFunc()
 EndClass()
