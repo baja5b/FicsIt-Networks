@@ -123,7 +123,7 @@ BeginFunc(findPathTo, "Find Path To", "Computes a valid road path (list of path-
 				TArray<FGuid> p;
 				if (net->FindVehiclePath(fromG, toG, veh->GetVehiclePathPreset(), p)) {
 					for (const FGuid& g : p) out.Add((FIRStr) g.ToString());
-					// Gesamtlaenge: Spline-Laengen der Segmente entlang des Pfads aufsummieren.
+					// Total length: sum up the spline lengths of the segments along the path.
 					if (p.Num() >= 2) {
 						TMap<FGuid, AFGVehiclePathNode*> nodeMap;
 						for (AFGVehiclePathNode* n : net->GetNetworkElementsOnServer()) if (IsValid(n)) nodeMap.Add(n->GetPathNodeGUID(), n);
