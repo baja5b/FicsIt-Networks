@@ -256,3 +256,52 @@ Power-Cycle noetig. ANDERS als #15 (Parallel-Thread). FIX-Richtung: im Game-Thre
 Body in try/catch, Exception in den Future-Fehlerkanal legen -> propagiert sauber als fangbarer Lua-Fehler
 statt [Fatal]. Betrifft ALLE runtime-0-Funcs mit InVal/throw (addWaypoint, insertWaypoint, linkTo mit
 ungueltigem Arg, ...). Siehe property-setter-threading + ue56-exception-crash Memories.
+
+---
+
+## Welle 5 — Rebase auf upstream `development` (2026-06-28)
+
+Bisher basierte der Port (`port/1.2-ue5.6`) auf upstream `master` (`789c32fd`). `master`
+ist ein duenner/alter Branch; **`development` ist die echte Mainline** (~1910 Commits
+voraus, dorthin gehen die upstream-PRs). Neuer Branch: **`port/1.2-ue5.6-on-dev`**.
+
+### Rebase — konfliktfrei (0 Konflikte)
+Die ~105 geaenderten Port-Dateien ueberschneiden sich nur in ~2 Dateien mit den ~306
+von `development` geaenderten Dateien → der Port transplantiert sauber, **0 Konflikte**.
+Schluessel-Commits auf dem rebasierten Branch:
+- `2e2cc5fd` — Port 1.2/UE5.6-Bundle (writable Panel-Labels, Sign-Reflection, getAllTrains,
+  internalName-Fix, 2 Crash-Fixes, FINScreen Designer-Rendering). _Entspricht dem frueh, auf
+  `master` als `07df4cf` committeten Bundle._
+- `3a592c5e` — WaE-Init-Fix (siehe unten).
+
+### Einziger Code-Fix nach Rebase: 3 uninitialisierte Locals (C4701)
+Der dev-basierte Tree baut **sauber gegen SML 5.6.1** fuer BEIDE Targets
+(`FactoryGameSteam Win64 Shipping` + `FactoryEditor Win64 Development`), **0 Fehler** mit
+`bWarningsAsErrors`. Einziger noetiger Code-Fix: in `Source/FicsItNetworks/Private/Components/
+FINDynamicModuleSystemHolo.cpp` (dev's neuer Sizeable-Panel-Code) `ModuleSize` sowie `min`/`max`
+auf `FVector::ZeroVector` initialisiert (3× C4701). Commit `3a592c5e`.
+
+### ✅ In-Game validiert (BuildId 495413)
+Mod laedt, **selftest PASS 165**, und die neuen dev-Panels
+(`SectionedPanelBasePanelA`/`SectionedPanelRearPanelA`, `SizeableModulePanel`) sind buildbar
+und FIN-Reflection-lesbar.
+
+### Cook-Blocker #2 — BuildId-Mismatch (UPDATE 2026-06-28)
+Praezisierung der oben (Welle 3) notierten Regel — es sind **zwei verschiedene BuildIds**:
+
+| Zweck | BuildId | Quelle / `Build.version`-Backup |
+|---|---|---|
+| **Cook** (cooker-editor laedt alle Plugin-Editor-Module) | **43139311** | Engine-Editor-Binaries-BuildId; in `Build.version.fin-backup` |
+| **Game/Runtime** (laufendes Spiel) | **aktueller Spiel-CL, derzeit `495413`** | aus dem `.modules`-Manifest des Spiels; in `Build.version.shipping495413` |
+
+- Beim Cook MUSS `Build.version`-`CompatibleChangelist` = **43139311** sein, sonst stirbt der
+  Cook mit „Plugin 'X' failed to load because module 'X' could not be found" (getroffen bei
+  **RainRendering, OnlineIntegration, Wwise** — die laden bei PostConfigInit, vor jedem FIN-Code).
+- Das laufende Spiel braucht die Spiel-BuildId. Das Spiel wurde von 1.2.3 / CL `493833` (der in
+  Welle 3 notierte, jetzt **stale** Wert) auf **`495413`** gepatcht. Immer am Spiel-`.modules`
+  verifizieren. Datei `Build.version.shipping493833` → umbenannt zu `Build.version.shipping495413`.
+- BuildId lebt nur im `.modules`-Manifest (**kein DLL-Recompile** noetig, um sie zu aendern).
+- **Regression dieser Session:** `FactoryEditor` rebuilden, WAEHREND `Build.version` auf dem
+  Spiel-Wert (495413/493833) steht, re-stempelt die Editor-Module falsch → Cook bricht. Vor dem
+  Cook IMMER auf `43139311` (`.fin-backup`) zuruecksetzen.
+- **Regel:** Bei jedem Spiel-Patch neu angleichen (Runtime-Wert = aktueller Spiel-CL).
