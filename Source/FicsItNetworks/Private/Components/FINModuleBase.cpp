@@ -9,6 +9,24 @@ void AFINModuleBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
 	DOREPLIFETIME(AFINModuleBase, ModuleName);
 }
 
+void AFINModuleBase::BeginPlay() {
+	Super::BeginPlay();
+
+	// FIN-1.2-PORT: Panel grid self-heal. Every module persists ModulePanel + ModulePos
+	// itself (SaveGame). If the panel slot does not know the module after loading (grid
+	// corrupted in the save, e.g. re-saved during the UE5.6 deserialization-bug era, or
+	// reset by the sanity check in UFINModuleSystemPanel::Serialize), re-register -
+	// restores the grid state losslessly from the modules' own data.
+	if (HasAuthority() && IsValid(ModulePanel)) {
+		const int32 X = static_cast<int32>(ModulePos.X);
+		const int32 Y = static_cast<int32>(ModulePos.Y);
+		const int32 Rot = static_cast<int32>(ModulePos.Z);
+		if (X >= 0 && Y >= 0 && ModulePanel->GetModule(X, Y) != this) {
+			ModulePanel->AddModule(this, X, Y, Rot);
+		}
+	}
+}
+
 void AFINModuleBase::EndPlay(EEndPlayReason::Type reason) {
 	Super::EndPlay(reason);
 	if (HasAuthority() && ModulePanel) ModulePanel->RemoveModule(this);

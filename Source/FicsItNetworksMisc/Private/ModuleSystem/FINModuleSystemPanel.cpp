@@ -1,6 +1,7 @@
 #include "ModuleSystem/FINModuleSystemPanel.h"
 #include "FactoryGameCustomVersion.h"
 #include "FGDismantleInterface.h"
+#include "FicsItNetworksMisc.h"
 #include "FortniteReleaseBranchCustomObjectVersion.h"
 #include "SaveCustomVersion.h"
 #include "GameFramework/Actor.h"
@@ -21,16 +22,54 @@ void UFINModuleSystemPanel::Serialize(FArchive& Ar) {
 		Ar.SetCustomVersion(FFortniteReleaseBranchCustomObjectVersion::GUID, 1, TEXT("FFortniteReleaseBranchCustomObjectVersion"));
 	}
 
+	// FIN-1.2-PORT: Satisfactory 1.0/1.1 (UE5.3) wrote the UCSModifiedProperties array
+	// INLINE into every component blob on save (4 bytes for an empty array), because a
+	// SAVING archive always carries the current FFortniteReleaseBranch version
+	// (UActorComponent::Serialize: >= ActorComponentUCSModifiedPropertiesSparseStorage
+	// -> read/write inline). When LOADING under 1.2 the save archive is missing the
+	// engine custom versions (CustomVer == -1), so that block is NOT read -> everything
+	// after Super::Serialize (PanelHeight/Width/grid) is shifted by 4 bytes. Symptom:
+	// "NO CPU DETECTED" / invalid placement on all panels after save migration.
+	// Fix (mirror image of the bOldObj hack above): pin the version to the writer's
+	// level for those saves so the legacy inline block is consumed again.
+	// Shipped save versions (verified empirically): 1.0=46, 1.1=52, first 1.2=60;
+	// 53-59 never shipped, so any threshold in between separates the eras exactly.
+	const bool bLegacyInlineUCS = Ar.IsSaveGame() && Ar.IsLoading() && !bOldObj
+		&& Ar.CustomVer(FSaveCustomVersion::GUID) < FSaveCustomVersion::FixNewPlayerInfoHandleSerializationFormat
+		&& Ar.CustomVer(FFortniteReleaseBranchCustomObjectVersion::GUID) < FFortniteReleaseBranchCustomObjectVersion::ActorComponentUCSModifiedPropertiesSparseStorage;
+	int32 FortVerBackup = 0;
+	if (bLegacyInlineUCS) {
+		FortVerBackup = Ar.CustomVer(FFortniteReleaseBranchCustomObjectVersion::GUID);
+		Ar.SetCustomVersion(FFortniteReleaseBranchCustomObjectVersion::GUID, FFortniteReleaseBranchCustomObjectVersion::ActorComponentUCSModifiedPropertiesSparseStorage, TEXT("FFortniteReleaseBranchCustomObjectVersion"));
+	}
+
 	Super::Serialize(Ar);
 	
 	if (Ar.IsSaveGame()) {
 		if(bOldObj) {
 			Ar.SetCustomVersion(FFortniteReleaseBranchCustomObjectVersion::GUID, Ver, TEXT("FFortniteReleaseBranchCustomObjectVersion"));
 		}
+		if (bLegacyInlineUCS) {
+			Ar.SetCustomVersion(FFortniteReleaseBranchCustomObjectVersion::GUID, FortVerBackup, TEXT("FFortniteReleaseBranchCustomObjectVersion"));
+		}
 		
 		int height = PanelHeight, width = PanelWidth;
 		Ar << PanelHeight;
 		Ar << PanelWidth;
+		
+		// FIN-1.2-PORT: Safety net against misaligned streams (whatever the cause):
+		// do not accept implausible grid dimensions (would cause huge allocations or a
+		// crash), reset the grid to defaults and skip the slot refs. The modules heal
+		// the grid themselves (AFINModuleBase::BeginPlay re-registers via ModulePanel/ModulePos).
+		if (Ar.IsLoading() && (PanelHeight < 0 || PanelHeight > 256 || PanelWidth < 0 || PanelWidth > 256)) {
+			UE_LOG(LogFicsItNetworksMisc, Error,
+				TEXT("FINModuleSystemPanel %s: implausible panel grid %dx%d in save data (misaligned stream / incompatible save?) - keeping defaults %dx%d, modules will re-register themselves."),
+				*GetPathName(), PanelHeight, PanelWidth, height, width);
+			PanelHeight = height;
+			PanelWidth = width;
+			SetupGrid();
+			return;
+		}
 		
 		SetupGrid();
 
